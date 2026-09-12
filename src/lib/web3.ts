@@ -39,6 +39,7 @@ export const escrowAbi = parseAbi([
   "function getOrder(uint256 orderId) view returns ((uint256 id,address buyer,address merchant,address claimOwner,uint256 amount,uint64 createdAt,uint64 cancelBefore,uint64 refundBefore,uint8 status,bool transferable))",
   "function getAvailableActions(uint256 orderId,address actor) view returns (uint8)",
   "event OrderCreated(uint256 indexed orderId,address indexed buyer,address indexed merchant,uint256 amount,uint64 cancelBefore,uint64 refundBefore,bool transferable)",
+  "event ClaimTransferred(uint256 indexed orderId,address indexed previousOwner,address indexed newOwner)",
 ]);
 const erc20Abi = parseAbi([
   "function allowance(address owner,address spender) view returns (uint256)",
@@ -161,24 +162,65 @@ export async function readOrderOnArc(orderId: number, receiptContract?: Address)
     "FINALIZED",
     "DISPUTED",
   ] as const;
+  const state = states[order.status] ?? "NONE";
+  if (state === "NONE" || state === "DISPUTED")
+    throw new Error("Order does not exist or is unsupported.");
   return {
     buyer: order.buyer,
     merchant: order.merchant,
     claimOwner: order.claimOwner,
     amount: Number(formatUnits(order.amount, 6)),
     purchasedAt: Number(order.createdAt) * 1000,
+    cancelDeadline: Number(order.cancelBefore) * 1000,
     refundDeadline: Number(order.refundBefore) * 1000,
-    state: states[order.status] ?? "NONE",
+    state,
     transferable: order.transferable,
   };
 }
 
-export async function synchronizeEns(payload: Record<string, unknown>) {
+export async function discoverOrdersForAccount(account: Address) {
+  const escrow = requireEscrow();
+  const fromBlock = BigInt(import.meta.env.VITE_ESCROW_DEPLOY_BLOCK || "0");
+  const [created, received] = await Promise.all([
+    publicClient.getLogs({
+      address: escrow,
+      event: parseAbi([
+        "event OrderCreated(uint256 indexed orderId,address indexed buyer,address indexed merchant,uint256 amount,uint64 cancelBefore,uint64 refundBefore,bool transferable)",
+      ])[0],
+      args: { buyer: account },
+      fromBlock,
+      toBlock: "latest",
+    }),
+    publicClient.getLogs({
+      address: escrow,
+      event: parseAbi([
+        "event ClaimTransferred(uint256 indexed orderId,address indexed previousOwner,address indexed newOwner)",
+      ])[0],
+      args: { newOwner: account },
+      fromBlock,
+      toBlock: "latest",
+    }),
+  ]);
+  const ids = [...new Set([...created, ...received].map((log) => log.args.orderId))];
+  const orders = await Promise.all(
+    ids.map(async (orderId) => ({
+      orderId: Number(orderId),
+      txHash: created.find((log) => log.args.orderId === orderId)?.transactionHash ?? "",
+      order: await readOrderOnArc(Number(orderId)),
+    })),
+  );
+  return orders.filter(
+    ({ order }) =>
+      order.buyer.toLowerCase() === account.toLowerCase() ||
+      order.claimOwner.toLowerCase() === account.toLowerCase(),
+  );
+}
+export async function synchronizeEns(orderId: number, arcTxHash?: Hash) {
   if (!ENS_SYNC_URL) return { synced: false };
   const response = await fetch(ENS_SYNC_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ orderId, arcTxHash }),
   });
   if (!response.ok)
     throw new Error(`Arc succeeded, but ENS synchronization returned ${response.status}.`);

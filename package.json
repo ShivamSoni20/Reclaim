@@ -9,7 +9,8 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "ens-sync": "node --experimental-strip-types services/ens-sync/src/server.ts"
   },
   "overrides": {
     "rolldown": "1.2.1"

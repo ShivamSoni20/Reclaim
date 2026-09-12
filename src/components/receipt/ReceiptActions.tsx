@@ -99,7 +99,7 @@ export function ReceiptActions({
             description={`Cancel before settlement and receive your full ${receipt.amount} USDC.`}
             secondary={
               <>
-                Available for <Countdown deadline={receipt.refundDeadline} format="long" />.
+                Available for <Countdown deadline={receipt.cancelDeadline} format="long" />.
               </>
             }
             cta="Cancel Order"

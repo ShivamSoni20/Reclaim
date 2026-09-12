@@ -52,17 +52,21 @@ function DemoPage() {
         txHash: result.hash,
       });
       setStage("Synchronizing the ENSv2 receipt");
-      const sync = await synchronizeEns({
-        event: "OrderCreated",
-        receipt: receipt.name,
-        orderId: receipt.order,
-        arcTxHash: result.hash,
-      });
-      if (!sync.synced)
-        toast.warning("Arc purchase confirmed", {
+      try {
+        const sync = await synchronizeEns(receipt.order, result.hash);
+        if (!sync.synced)
+          toast.warning("Arc purchase confirmed", {
+            description:
+              "ENS sync is not configured; the receipt still points to verified Arc state.",
+          });
+      } catch (syncError) {
+        toast.warning("Arc purchase confirmed; ENS sync is pending", {
           description:
-            "ENS sync is not configured; the receipt still points to verified Arc state.",
+            syncError instanceof Error
+              ? syncError.message
+              : "The receipt can be synchronized again.",
         });
+      }
       await navigate({ to: "/receipt/$name", params: { name: receipt.name } });
     } catch (error) {
       toast.error("Purchase was not completed", {

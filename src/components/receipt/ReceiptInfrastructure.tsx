@@ -1,9 +1,9 @@
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { RESOLVER, shortAddress, type Receipt } from "@/lib/receipts";
+import { shortAddress, type Receipt } from "@/lib/receipts";
 import { cn } from "@/lib/utils";
-import { ARC_CHAIN_ID, LIVE_ENABLED, transactionUrl } from "@/lib/web3";
+import { ARC_CHAIN_ID, transactionUrl } from "@/lib/web3";
 
 function Row({
   title,
@@ -57,7 +57,7 @@ export function ReceiptInfrastructure({ receipt }: { receipt: Receipt }) {
           title="Arc"
           label="Settlement contract"
           value={shortAddress(receipt.settlementContract)}
-          status={LIVE_ENABLED ? "Verified" : "Preview"}
+          status={receipt.arcVerified ? "Verified" : "Preview"}
           linkLabel="View on Arc Explorer"
           href={transactionUrl(receipt.txHash)}
         />
@@ -65,7 +65,9 @@ export function ReceiptInfrastructure({ receipt }: { receipt: Receipt }) {
           title="ENSv2"
           label="Receipt"
           value={receipt.name}
-          status={LIVE_ENABLED ? "Resolved" : "Preview"}
+          status={
+            receipt.ensSynced ? "Synchronized" : receipt.ensResolved ? "Sync pending" : "Preview"
+          }
           linkLabel="Inspect resolver"
           href={`https://app.ens.domains/${receipt.name}`}
         />
@@ -97,7 +99,7 @@ export function ReceiptInfrastructure({ receipt }: { receipt: Receipt }) {
               {[
                 ["Chain", `${receipt.network} (chainId ${ARC_CHAIN_ID})`],
                 ["Settlement contract", receipt.settlementContract],
-                ["ENS resolver", RESOLVER],
+                ["ENS resolver", receipt.ensResolver ?? "Not resolved"],
                 ["Purchase transaction", receipt.txHash],
                 ...(receipt.refundTxHash ? [["Refund transaction", receipt.refundTxHash]] : []),
                 ["Token", "USDC · 6 decimals"],

@@ -29,7 +29,7 @@ import {
 import { connectWallet, getWalletClient, useWallet } from "@/lib/wallet";
 import { LIVE_ENABLED, readOrderOnArc, synchronizeEns, writeOrderAction } from "@/lib/web3";
 import { getAddress } from "viem";
-import { resolveReceiptName } from "@/lib/ens";
+import { recordsMatchArc, resolveReceiptName } from "@/lib/ens";
 
 export const Route = createFileRoute("/receipt/$name")({
   head: ({ params }) => {
@@ -57,20 +57,25 @@ function ReceiptPage() {
   const [flow, setFlow] = useState<"idle" | "cancelling" | "transferring">("idle");
   const [justCancelled, setJustCancelled] = useState(false);
   const [stage, setStage] = useState("");
+  const [syncPending, setSyncPending] = useState(false);
   const wallet = useWallet();
 
   useEffect(() => {
     if (!LIVE_ENABLED) return;
-    const orderId = Number(name.match(/order-(\d+)/)?.[1]);
-    if (!Number.isFinite(orderId)) return;
-    void readOrderOnArc(orderId)
-      .then((order) => {
-        if (order.state === "NONE" || order.state === "DISPUTED") return;
+    void resolveReceiptName(name)
+      .then(async (resolved) => {
+        const order = await readOrderOnArc(resolved.orderId, resolved.contract);
+        const synced = recordsMatchArc(resolved.records, order);
         applyArcOrder(resolved.name, {
           ...order,
           order: resolved.orderId,
           settlementContract: resolved.contract,
+          arcVerified: true,
+          ensResolved: true,
+          ensSynced: synced,
+          ensResolver: resolved.resolver,
         });
+        setSyncPending(!synced);
       })
       .catch((error: unknown) =>
         toast.error("Could not verify Arc settlement", {
@@ -95,30 +100,47 @@ function ReceiptPage() {
           receipt.order,
           resolvedRecipient,
         );
-        setStage("Arc confirmed. Synchronizing the ENSv2 receipt");
-        const nextState =
+        const canonical = await readOrderOnArc(receipt.order);
+        const expectedState =
           action === "cancel"
             ? "CANCELLED"
             : action === "requestRefund"
               ? "REFUND_REQUESTED"
               : "PAID";
-        await synchronizeEns({
-          event: action,
-          receipt: receipt.name,
-          orderId: receipt.order,
-          state: nextState,
-          arcTxHash: hash,
-          claimOwner: recipient,
+        if (canonical.state !== expectedState)
+          throw new Error(
+            `Arc confirmed, but order state is ${canonical.state}, expected ${expectedState}.`,
+          );
+        if (
+          action === "transferClaim" &&
+          canonical.claimOwner.toLowerCase() !== recipient!.toLowerCase()
+        )
+          throw new Error("Arc confirmed, but the claim owner did not update.");
+        applyArcOrder(receipt.name, {
+          ...canonical,
+          arcVerified: true,
+          ...(action === "cancel" ? { refundTxHash: hash, refundedAmount: canonical.amount } : {}),
         });
-        if (action === "cancel") cancelReceipt(receipt.name);
-        else if (action === "requestRefund") markRefundRequested(receipt.name, hash);
-        else transferClaim(receipt.name, recipient!);
+
+        setStage("Arc confirmed. Synchronizing the ENSv2 receipt");
+        try {
+          await synchronizeEns(receipt.order, hash);
+          applyArcOrder(receipt.name, { ensSynced: true });
+          setSyncPending(false);
+        } catch (syncError) {
+          applyArcOrder(receipt.name, { ensSynced: false });
+          setSyncPending(true);
+          toast.warning("Arc confirmed; ENS sync needs retry", {
+            description: syncError instanceof Error ? syncError.message : "Resolver update failed.",
+          });
+        }
       } else {
         await new Promise((resolve) => setTimeout(resolve, 700));
         if (action === "cancel") cancelReceipt(receipt.name);
         else if (action === "requestRefund") markRefundRequested(receipt.name);
         else transferClaim(receipt.name, recipient!);
       }
+
       if (action === "cancel") setJustCancelled(true);
       toast.success(
         action === "cancel"
@@ -309,6 +331,35 @@ function ReceiptPage() {
           </div>
 
           <ReceiptPermissions />
+          {syncPending && LIVE_ENABLED && (
+            <section className="rounded-[18px] border border-warning/30 bg-warning/5 p-6">
+              <h2 className="text-sm font-semibold">Arc is confirmed; ENS is pending</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                The financial transaction succeeded. Retry the derived ENS receipt records safely.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-4 rounded-full"
+                onClick={() => {
+                  void synchronizeEns(receipt.order)
+                    .then(() => {
+                      applyArcOrder(receipt.name, { ensSynced: true });
+                      setSyncPending(false);
+                      toast.success("ENS receipt synchronized");
+                    })
+                    .catch((error: unknown) =>
+                      toast.error("ENS sync still pending", {
+                        description:
+                          error instanceof Error ? error.message : "Resolver update failed.",
+                      }),
+                    );
+                }}
+              >
+                Retry ENS Sync
+              </Button>
+            </section>
+          )}
+
           <ReceiptInfrastructure receipt={receipt} />
         </div>
       </main>

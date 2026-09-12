@@ -1,14 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Header } from "@/components/site/Header";
 import { ExecutableReceipt } from "@/components/receipt/ExecutableReceipt";
 import { LogoMark } from "@/components/site/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { shortAddress, useReceipts, WALLET } from "@/lib/receipts";
+import { applyArcOrder, shortAddress, useReceipts, WALLET } from "@/lib/receipts";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/lib/wallet";
+import { discoverOrdersForAccount, ESCROW_ADDRESS, LIVE_ENABLED } from "@/lib/web3";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => {
@@ -44,6 +46,35 @@ function Dashboard() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("All");
   const wallet = useWallet();
+
+  useEffect(() => {
+    const escrowAddress = ESCROW_ADDRESS;
+    if (!LIVE_ENABLED || !wallet.address || !escrowAddress) return;
+    let active = true;
+    void discoverOrdersForAccount(wallet.address)
+      .then((found) => {
+        if (!active) return;
+        const parent = import.meta.env.VITE_RECEIPT_PARENT;
+        if (!parent) throw new Error("VITE_RECEIPT_PARENT is required for live discovery.");
+        found.forEach(({ orderId, txHash, order }) =>
+          applyArcOrder(`order-${orderId}.${parent}`, {
+            ...order,
+            order: orderId,
+            settlementContract: escrowAddress,
+            txHash,
+            arcVerified: true,
+          }),
+        );
+      })
+      .catch((error: unknown) =>
+        toast.error("Could not discover Arc receipts", {
+          description: error instanceof Error ? error.message : "Arc RPC log query failed.",
+        }),
+      );
+    return () => {
+      active = false;
+    };
+  }, [wallet.address]);
 
   const metrics = useMemo(() => {
     const activeValue = receipts

@@ -15,7 +15,9 @@ export interface Receipt {
   claimOwner: string;
   state: ReceiptState;
   purchasedAt: number;
-  /** epoch ms after which cancel/refund is no longer possible */
+  /** epoch ms after which immediate cancellation is no longer possible */
+  cancelDeadline: number;
+  /** epoch ms after which a refund can no longer be requested */
   refundDeadline: number;
   transferable: boolean;
   network: string;
@@ -23,6 +25,10 @@ export interface Receipt {
   txHash: string;
   refundTxHash?: string;
   refundedAmount?: number;
+  arcVerified?: boolean;
+  ensResolved?: boolean;
+  ensSynced?: boolean;
+  ensResolver?: string;
 }
 
 export const WALLET = "0x72A4f1B0c3De5a91C4b77A0913f8e2Cd449891B2";
@@ -48,6 +54,7 @@ function seed(): Receipt[] {
       claimOwner: WALLET,
       state: "PAID",
       purchasedAt: now - 3 * 60_000,
+      cancelDeadline: now + CANCEL_WINDOW_MS,
       refundDeadline: now + CANCEL_WINDOW_MS,
       transferable: true,
       network: "Arc",
@@ -64,6 +71,7 @@ function seed(): Receipt[] {
       claimOwner: WALLET,
       state: "CANCELLED",
       purchasedAt: now - 4 * 24 * 60 * 60_000,
+      cancelDeadline: now - 4 * 24 * 60 * 60_000 + CANCEL_WINDOW_MS,
       refundDeadline: now - 4 * 24 * 60 * 60_000 + CANCEL_WINDOW_MS,
       transferable: false,
       network: "Arc",
@@ -82,6 +90,7 @@ function seed(): Receipt[] {
       claimOwner: WALLET,
       state: "FINALIZED",
       purchasedAt: now - 11 * 24 * 60 * 60_000,
+      cancelDeadline: now - 11 * 24 * 60 * 60_000 + CANCEL_WINDOW_MS,
       refundDeadline: now - 11 * 24 * 60 * 60_000 + CANCEL_WINDOW_MS,
       transferable: false,
       network: "Arc",
@@ -143,6 +152,7 @@ export function applyArcOrder(name: string, patch: Partial<Receipt>) {
     claimOwner: WALLET,
     state: "PAID",
     purchasedAt: Date.now(),
+    cancelDeadline: Date.now(),
     refundDeadline: Date.now(),
     transferable: false,
     network: "Arc Testnet",
@@ -154,19 +164,19 @@ export function applyArcOrder(name: string, patch: Partial<Receipt>) {
   emit();
 }
 
-export function cancelReceipt(name: string) {
+export function cancelReceipt(name: string, refundTxHash?: string) {
   const r = getReceipt(name);
   if (!r) return;
   update(name, {
     state: "CANCELLED",
     refundedAmount: r.amount,
     transferable: false,
-    refundTxHash: randomHash(),
+    refundTxHash: refundTxHash ?? randomHash(),
   });
 }
 
 export function markRefundRequested(name: string, txHash?: string) {
-  update(name, { state: "REFUND_REQUESTED", txHash: txHash ?? getReceipt(name)?.txHash });
+  update(name, txHash ? { state: "REFUND_REQUESTED", txHash } : { state: "REFUND_REQUESTED" });
 }
 
 export function transferClaim(name: string, newOwner: string) {
@@ -180,6 +190,7 @@ export function makeDemoPurchase(): Receipt {
   const fresh: Receipt = {
     ...base,
     purchasedAt: now,
+    cancelDeadline: now + CANCEL_WINDOW_MS,
     refundDeadline: now + CANCEL_WINDOW_MS,
     txHash: randomHash(),
   };
@@ -193,6 +204,7 @@ export function addLivePurchase(input: {
   buyer: string;
   merchant: string;
   amount: number;
+  cancelBefore: number;
   refundBefore: number;
   transferable: boolean;
   txHash: string;
@@ -208,6 +220,7 @@ export function addLivePurchase(input: {
     claimOwner: input.buyer,
     state: "PAID",
     purchasedAt: Date.now(),
+    cancelDeadline: input.cancelBefore,
     refundDeadline: input.refundBefore,
     transferable: input.transferable,
     network: "Arc Testnet",
