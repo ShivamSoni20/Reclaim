@@ -8,7 +8,18 @@ interface IERC20 {
 
 /// @title ExecutableReceiptEscrow
 /// @notice Canonical financial state for Executable Receipts on Arc.
+library SafeERC20 {
+    error SafeERC20FailedOperation(address token);
+    function safeTransfer(IERC20 token, address to, uint256 value) internal { _call(token, abi.encodeCall(token.transfer, (to, value))); }
+    function safeTransferFrom(IERC20 token, address from, address to, uint256 value) internal { _call(token, abi.encodeCall(token.transferFrom, (from, to, value))); }
+    function _call(IERC20 token, bytes memory data) private {
+        (bool success, bytes memory result) = address(token).call(data);
+        if (!success || (result.length != 0 && !abi.decode(result, (bool)))) revert SafeERC20FailedOperation(address(token));
+    }
+}
+
 contract ExecutableReceiptEscrow {
+    using SafeERC20 for IERC20;
     enum OrderStatus { NONE, PAID, REFUND_REQUESTED, CANCELLED, REFUNDED, FINALIZED, DISPUTED }
 
     struct Order {
@@ -30,6 +41,7 @@ contract ExecutableReceiptEscrow {
     uint64 public cancelWindow = 15 minutes;
     uint64 public refundWindow = 15 minutes;
     uint256 public nextOrderId = 1;
+    uint256 public totalEscrowed;
     uint256 private locked;
     mapping(uint256 => uint256) public productPrice;
     mapping(uint256 => bool) public productTransferable;
@@ -47,7 +59,7 @@ contract ExecutableReceiptEscrow {
     error DeadlinePassed();
     error DeadlinePending();
     error InvalidAddress();
-    error TransferFailed();
+    error InvalidWindows();
     error UnknownProduct();
     error ReentrantCall();
 
@@ -71,6 +83,7 @@ contract ExecutableReceiptEscrow {
     }
 
     function setWindows(uint64 cancelWindow_, uint64 refundWindow_) external onlyOwner {
+        if (cancelWindow_ > refundWindow_ || refundWindow_ == 0) revert InvalidWindows();
         cancelWindow = cancelWindow_;
         refundWindow = refundWindow_;
     }
@@ -87,18 +100,20 @@ contract ExecutableReceiptEscrow {
             transferable: productTransferable[productId]
         });
         orders[orderId] = order;
-        if (!usdc.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+        totalEscrowed += amount;
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
         emit OrderCreated(orderId, msg.sender, merchant, amount, order.cancelBefore, order.refundBefore, order.transferable);
     }
 
     function cancel(uint256 orderId) external nonReentrant {
         Order storage order = orders[orderId];
         if (order.status != OrderStatus.PAID) revert InvalidState();
-        if (msg.sender != order.buyer && msg.sender != order.claimOwner) revert Unauthorized();
+        if (msg.sender != order.claimOwner) revert Unauthorized();
         if (block.timestamp >= order.cancelBefore) revert DeadlinePassed();
         order.status = OrderStatus.CANCELLED;
         uint256 amount = order.amount;
-        if (!usdc.transfer(order.buyer, amount)) revert TransferFailed();
+        totalEscrowed -= amount;
+        usdc.safeTransfer(order.buyer, amount);
         emit OrderCancelled(orderId, msg.sender, amount);
     }
 
@@ -116,7 +131,8 @@ contract ExecutableReceiptEscrow {
         if (order.status != OrderStatus.REFUND_REQUESTED) revert InvalidState();
         order.status = OrderStatus.REFUNDED;
         uint256 amount = order.amount;
-        if (!usdc.transfer(order.buyer, amount)) revert TransferFailed();
+        totalEscrowed -= amount;
+        usdc.safeTransfer(order.buyer, amount);
         emit RefundApproved(orderId, amount);
     }
 
@@ -136,7 +152,8 @@ contract ExecutableReceiptEscrow {
         if (block.timestamp < order.refundBefore) revert DeadlinePending();
         order.status = OrderStatus.FINALIZED;
         uint256 amount = order.amount;
-        if (!usdc.transfer(order.merchant, amount)) revert TransferFailed();
+        totalEscrowed -= amount;
+        usdc.safeTransfer(order.merchant, amount);
         emit OrderFinalized(orderId, amount);
     }
 
