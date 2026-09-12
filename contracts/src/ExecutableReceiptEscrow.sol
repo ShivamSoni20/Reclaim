@@ -10,17 +10,34 @@ interface IERC20 {
 /// @notice Canonical financial state for Executable Receipts on Arc.
 library SafeERC20 {
     error SafeERC20FailedOperation(address token);
-    function safeTransfer(IERC20 token, address to, uint256 value) internal { _call(token, abi.encodeCall(token.transfer, (to, value))); }
-    function safeTransferFrom(IERC20 token, address from, address to, uint256 value) internal { _call(token, abi.encodeCall(token.transferFrom, (from, to, value))); }
+
+    function safeTransfer(IERC20 token, address to, uint256 value) internal {
+        _call(token, abi.encodeCall(token.transfer, (to, value)));
+    }
+
+    function safeTransferFrom(IERC20 token, address from, address to, uint256 value) internal {
+        _call(token, abi.encodeCall(token.transferFrom, (from, to, value)));
+    }
+
     function _call(IERC20 token, bytes memory data) private {
         (bool success, bytes memory result) = address(token).call(data);
-        if (!success || (result.length != 0 && !abi.decode(result, (bool)))) revert SafeERC20FailedOperation(address(token));
+        if (!success || (result.length != 0 && !abi.decode(result, (bool)))) {
+            revert SafeERC20FailedOperation(address(token));
+        }
     }
 }
 
 contract ExecutableReceiptEscrow {
     using SafeERC20 for IERC20;
-    enum OrderStatus { NONE, PAID, REFUND_REQUESTED, CANCELLED, REFUNDED, FINALIZED, DISPUTED }
+    enum OrderStatus {
+        NONE,
+        PAID,
+        REFUND_REQUESTED,
+        CANCELLED,
+        REFUNDED,
+        FINALIZED,
+        DISPUTED
+    }
 
     struct Order {
         uint256 id;
@@ -47,7 +64,15 @@ contract ExecutableReceiptEscrow {
     mapping(uint256 => bool) public productTransferable;
     mapping(uint256 => Order) private orders;
 
-    event OrderCreated(uint256 indexed orderId, address indexed buyer, address indexed merchant, uint256 amount, uint64 cancelBefore, uint64 refundBefore, bool transferable);
+    event OrderCreated(
+        uint256 indexed orderId,
+        address indexed buyer,
+        address indexed merchant,
+        uint256 amount,
+        uint64 cancelBefore,
+        uint64 refundBefore,
+        bool transferable
+    );
     event OrderCancelled(uint256 indexed orderId, address indexed actor, uint256 amount);
     event RefundRequested(uint256 indexed orderId, address indexed actor);
     event RefundApproved(uint256 indexed orderId, uint256 amount);
@@ -63,9 +88,20 @@ contract ExecutableReceiptEscrow {
     error UnknownProduct();
     error ReentrantCall();
 
-    modifier onlyOwner() { if (msg.sender != owner) revert Unauthorized(); _; }
-    modifier onlyMerchant() { if (msg.sender != merchant) revert Unauthorized(); _; }
-    modifier nonReentrant() { if (locked == 1) revert ReentrantCall(); locked = 1; _; locked = 0; }
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert Unauthorized();
+        _;
+    }
+    modifier onlyMerchant() {
+        if (msg.sender != merchant) revert Unauthorized();
+        _;
+    }
+    modifier nonReentrant() {
+        if (locked == 1) revert ReentrantCall();
+        locked = 1;
+        _;
+        locked = 0;
+    }
 
     constructor(address usdc_, address merchant_) {
         if (usdc_ == address(0) || merchant_ == address(0)) revert InvalidAddress();
@@ -94,15 +130,23 @@ contract ExecutableReceiptEscrow {
         orderId = nextOrderId++;
         uint64 now_ = uint64(block.timestamp);
         Order memory order = Order({
-            id: orderId, buyer: msg.sender, merchant: merchant, claimOwner: msg.sender,
-            amount: amount, createdAt: now_, cancelBefore: now_ + cancelWindow,
-            refundBefore: now_ + refundWindow, status: OrderStatus.PAID,
+            id: orderId,
+            buyer: msg.sender,
+            merchant: merchant,
+            claimOwner: msg.sender,
+            amount: amount,
+            createdAt: now_,
+            cancelBefore: now_ + cancelWindow,
+            refundBefore: now_ + refundWindow,
+            status: OrderStatus.PAID,
             transferable: productTransferable[productId]
         });
         orders[orderId] = order;
         totalEscrowed += amount;
         usdc.safeTransferFrom(msg.sender, address(this), amount);
-        emit OrderCreated(orderId, msg.sender, merchant, amount, order.cancelBefore, order.refundBefore, order.transferable);
+        emit OrderCreated(
+            orderId, msg.sender, merchant, amount, order.cancelBefore, order.refundBefore, order.transferable
+        );
     }
 
     function cancel(uint256 orderId) external nonReentrant {
@@ -157,7 +201,9 @@ contract ExecutableReceiptEscrow {
         emit OrderFinalized(orderId, amount);
     }
 
-    function getOrder(uint256 orderId) external view returns (Order memory) { return orders[orderId]; }
+    function getOrder(uint256 orderId) external view returns (Order memory) {
+        return orders[orderId];
+    }
 
     function getAvailableActions(uint256 orderId, address actor) external view returns (uint8 bitmap) {
         Order memory order = orders[orderId];
