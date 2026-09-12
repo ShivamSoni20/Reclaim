@@ -65,10 +65,21 @@ export function disconnectWallet() {
 }
 
 if (typeof window !== "undefined" && injected()) {
-  void injected()!
-    .request({ method: "eth_accounts" })
-    .then((accounts) => {
-      const [address] = accounts as Address[];
-      if (address) set({ status: "connected", address });
-    });
+  const provider = injected()! as EIP1193Provider & {
+    on?: (event: string, listener: (...args: unknown[]) => void) => void;
+  };
+  void provider.request({ method: "eth_accounts" }).then((accounts) => {
+    const [address] = accounts as Address[];
+    if (address) set({ status: "connected", address });
+  });
+  provider.on?.("accountsChanged", (...args) => {
+    const [accounts] = args as [Address[]];
+    const [address] = accounts;
+    set(address ? { status: "connected", address } : { status: "disconnected", address: null });
+  });
+  provider.on?.("chainChanged", (...args) => {
+    const [chainId] = args as [string];
+    const onArc = Number.parseInt(chainId, 16) === arcTestnet.id;
+    set({ chain: onArc ? "Arc Testnet" : "Wrong network" });
+  });
 }

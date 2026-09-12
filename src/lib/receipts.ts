@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { LIVE_ENABLED } from "./web3";
 
 export type ReceiptState = "PAID" | "REFUND_REQUESTED" | "CANCELLED" | "REFUNDED" | "FINALIZED";
 
@@ -90,7 +91,7 @@ function seed(): Receipt[] {
   ];
 }
 
-let receipts: Receipt[] = seed();
+let receipts: Receipt[] = LIVE_ENABLED ? [] : seed();
 const listeners = new Set<() => void>();
 
 function emit() {

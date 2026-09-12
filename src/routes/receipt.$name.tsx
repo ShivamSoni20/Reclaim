@@ -29,6 +29,7 @@ import {
 import { connectWallet, getWalletClient, useWallet } from "@/lib/wallet";
 import { LIVE_ENABLED, readOrderOnArc, synchronizeEns, writeOrderAction } from "@/lib/web3";
 import { getAddress } from "viem";
+import { resolveReceiptName } from "@/lib/ens";
 
 export const Route = createFileRoute("/receipt/$name")({
   head: ({ params }) => {
@@ -65,7 +66,11 @@ function ReceiptPage() {
     void readOrderOnArc(orderId)
       .then((order) => {
         if (order.state === "NONE" || order.state === "DISPUTED") return;
-        applyArcOrder(name, order);
+        applyArcOrder(resolved.name, {
+          ...order,
+          order: resolved.orderId,
+          settlementContract: resolved.contract,
+        });
       })
       .catch((error: unknown) =>
         toast.error("Could not verify Arc settlement", {

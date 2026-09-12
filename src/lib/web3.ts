@@ -141,7 +141,11 @@ export async function writeOrderAction(
   return hash;
 }
 
-export async function readOrderOnArc(orderId: number) {
+export async function readOrderOnArc(orderId: number, receiptContract?: Address) {
+  const configured = requireEscrow();
+  const address = receiptContract ? getAddress(receiptContract) : configured;
+  if (address !== configured)
+    throw new Error("This receipt points to an unsupported escrow contract.");
   const order = await publicClient.readContract({
     address: requireEscrow(),
     abi: escrowAbi,
