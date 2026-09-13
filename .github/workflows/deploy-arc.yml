@@ -1,0 +1,154 @@
+name: Deploy Reclaim to Arc Testnet
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-reclaim-arc-testnet
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: arc-testnet
+    env:
+      ARC_RPC_URL: ${{ secrets.ARC_RPC_URL }}
+      DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+      MERCHANT_ADDRESS: "0x620f495e239298490bE0117B4d0e836F71536B2b"
+      CANCEL_WINDOW_SECONDS: "900"
+      REFUND_WINDOW_SECONDS: "900"
+      ARC_USDC: "0x3600000000000000000000000000000000000000"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install forge-std
+        run: forge install foundry-rs/forge-std --no-commit
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          if [[ -z "$ARC_RPC_URL" ]]; then
+            echo "Required Actions secret ARC_RPC_URL is not configured." >&2
+            exit 1
+          fi
+          if [[ -z "$DEPLOYER_PRIVATE_KEY" ]]; then
+            echo "Required Actions secret DEPLOYER_PRIVATE_KEY is not configured." >&2
+            exit 1
+          fi
+
+      - name: Verify Arc Testnet preflight
+        shell: bash
+        run: |
+          chain_id="$(cast chain-id --rpc-url "$ARC_RPC_URL")"
+          [[ "$chain_id" == "5042002" ]] || {
+            echo "Expected Arc Testnet chain ID 5042002; received $chain_id." >&2
+            exit 1
+          }
+          block_number="$(cast block-number --rpc-url "$ARC_RPC_URL")"
+          [[ "$block_number" =~ ^[0-9]+$ ]] || {
+            echo "Arc block-number request returned an invalid value." >&2
+            exit 1
+          }
+          deployer="$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")"
+          [[ "${deployer,,}" == "${MERCHANT_ADDRESS,,}" ]] || {
+            echo "Configured key does not derive the expected deployer." >&2
+            exit 1
+          }
+          balance="$(cast balance "$MERCHANT_ADDRESS" --rpc-url "$ARC_RPC_URL")"
+          [[ "$balance" =~ ^[0-9]+$ && "$balance" != "0" ]] || {
+            echo "Arc Testnet deployer balance is zero or unavailable." >&2
+            exit 1
+          }
+          usdc_code="$(cast code "$ARC_USDC" --rpc-url "$ARC_RPC_URL")"
+          [[ -n "$usdc_code" && "$usdc_code" != "0x" ]] || {
+            echo "Arc Testnet USDC has no deployed bytecode." >&2
+            exit 1
+          }
+          echo "Arc Testnet preflight passed at block $block_number."
+
+      - name: Verify Solidity
+        run: |
+          forge fmt --check
+          forge build
+          forge test -vvv
+
+      - name: Deploy escrow
+        run: |
+          forge script \
+            contracts/script/DeployExecutableReceiptEscrow.s.sol:DeployExecutableReceiptEscrow \
+            --rpc-url "$ARC_RPC_URL" \
+            --broadcast \
+            -vvvv
+
+      - name: Capture deployment evidence
+        id: deployment
+        shell: bash
+        run: |
+          broadcast_file="broadcast/DeployExecutableReceiptEscrow.s.sol/5042002/run-latest.json"
+          [[ -f "$broadcast_file" ]] || {
+            echo "Foundry broadcast file was not created." >&2
+            exit 1
+          }
+          escrow_address="$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ExecutableReceiptEscrow") | .contractAddress' "$broadcast_file" | head -n 1)"
+          deployment_tx="$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ExecutableReceiptEscrow") | .hash' "$broadcast_file" | head -n 1)"
+          [[ "$escrow_address" =~ ^0x[0-9a-fA-F]{40}$ ]] || {
+            echo "Could not extract the escrow address from Foundry broadcast data." >&2
+            exit 1
+          }
+          [[ "$deployment_tx" =~ ^0x[0-9a-fA-F]{64}$ ]] || {
+            echo "Could not extract the deployment transaction from Foundry broadcast data." >&2
+            exit 1
+          }
+          receipt="$(cast receipt "$deployment_tx" --rpc-url "$ARC_RPC_URL" --json)"
+          status="$(jq -r '.status' <<< "$receipt")"
+          deployment_block_hex="$(jq -r '.blockNumber' <<< "$receipt")"
+          [[ "$status" == "0x1" || "$status" == "success" ]] || {
+            echo "Deployment transaction receipt is not successful." >&2
+            exit 1
+          }
+          deployment_block="$(cast to-dec "$deployment_block_hex")"
+          echo "escrow_address=$escrow_address" >> "$GITHUB_OUTPUT"
+          echo "deployment_tx=$deployment_tx" >> "$GITHUB_OUTPUT"
+          echo "deployment_block=$deployment_block" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployed escrow
+        shell: bash
+        env:
+          ESCROW_ADDRESS: ${{ steps.deployment.outputs.escrow_address }}
+        run: |
+          code="$(cast code "$ESCROW_ADDRESS" --rpc-url "$ARC_RPC_URL")"
+          [[ -n "$code" && "$code" != "0x" ]] || { echo "Escrow has no bytecode." >&2; exit 1; }
+          merchant="$(cast call "$ESCROW_ADDRESS" 'merchant()(address)' --rpc-url "$ARC_RPC_URL")"
+          usdc="$(cast call "$ESCROW_ADDRESS" 'usdc()(address)' --rpc-url "$ARC_RPC_URL")"
+          price="$(cast call "$ESCROW_ADDRESS" 'productPrice(uint256)(uint256)' 1 --rpc-url "$ARC_RPC_URL" | awk '{print $1}')"
+          transferable="$(cast call "$ESCROW_ADDRESS" 'productTransferable(uint256)(bool)' 1 --rpc-url "$ARC_RPC_URL")"
+          cancel_window="$(cast call "$ESCROW_ADDRESS" 'cancelWindow()(uint64)' --rpc-url "$ARC_RPC_URL" | awk '{print $1}')"
+          refund_window="$(cast call "$ESCROW_ADDRESS" 'refundWindow()(uint64)' --rpc-url "$ARC_RPC_URL" | awk '{print $1}')"
+          [[ "${merchant,,}" == "${MERCHANT_ADDRESS,,}" ]] || { echo "Merchant verification failed." >&2; exit 1; }
+          [[ "${usdc,,}" == "${ARC_USDC,,}" ]] || { echo "USDC verification failed." >&2; exit 1; }
+          [[ "$price" == "49000000" ]] || { echo "Product price verification failed." >&2; exit 1; }
+          [[ "$transferable" == "true" ]] || { echo "Product transferability verification failed." >&2; exit 1; }
+          [[ "$cancel_window" == "900" ]] || { echo "Cancel window verification failed." >&2; exit 1; }
+          [[ "$refund_window" == "900" ]] || { echo "Refund window verification failed." >&2; exit 1; }
+          echo "## Arc Testnet deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Escrow: [$ESCROW_ADDRESS](https://testnet.arcscan.app/address/$ESCROW_ADDRESS)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Transaction: [${{ steps.deployment.outputs.deployment_tx }}](https://testnet.arcscan.app/tx/${{ steps.deployment.outputs.deployment_tx }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Block: ${{ steps.deployment.outputs.deployment_block }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Merchant: $merchant" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Arc USDC: $usdc" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Product 1: 49000000 units, transferable" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cancel/refund windows: 900 seconds" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Foundry broadcast artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arc-testnet-deployment
+          path: broadcast/DeployExecutableReceiptEscrow.s.sol/5042002/
+          if-no-files-found: error
