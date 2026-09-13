@@ -104,3 +104,17 @@ npm run ens:verify -- order-7.your-controlled-name.eth
 - Product 1: `49 USDC` (`49000000` base units), transferable
 - Cancel window: `900 seconds`
 - Refund window: `900 seconds`
+
+## Verified Arc lifecycle
+
+Order `1` completed a real Arc Testnet `PAID → CANCELLED` lifecycle:
+
+- Buyer: `0x585BF3aCe247892Ac5f70cE5c8c16bD2f5C89047`
+- Approval: [`0x714c94255df962e756b8b0f67266cf0de3f576d1e048963a1ba131051d09a9b9`](https://testnet.arcscan.app/tx/0x714c94255df962e756b8b0f67266cf0de3f576d1e048963a1ba131051d09a9b9)
+- Purchase: [`0x573690792e4b2245047e0105d184e61d792462b177031cb97076172af39200f7`](https://testnet.arcscan.app/tx/0x573690792e4b2245047e0105d184e61d792462b177031cb97076172af39200f7)
+- Cancel: [`0x35e97f6888d76b65fcc17b752825b8b30cac88f55a447bf232570a7f89b2de9`](https://testnet.arcscan.app/tx/0x35e97f6888d76b65fcc17b752825b8b30cac88f55a447bf232570a7f89b2de9)
+- Buyer USDC: `50000000 → 994065 → 49992537`
+- Escrow USDC: `0 → 49000000 → 0`
+- CI evidence: [GitHub Actions run 34758209101](https://github.com/ShivamSoni20/Reclaim/actions/runs/34758209101)
+
+Arc gas is paid in USDC, accounting for the difference between the buyer's initial and final balances. No ENS transaction was part of this lifecycle run.

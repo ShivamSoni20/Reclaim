@@ -45,9 +45,23 @@ Solidity, Foundry, TypeScript, React, TanStack Start, viem, Tailwind and ENSv2 S
 - Cancel window: `900 seconds`
 - Refund window: `900 seconds`
 
-## Links pending lifecycle evidence
+## Verified Arc lifecycle evidence
 
-- Purchase/cancel/transfer transactions: pending real lifecycle test
+A real Arc Testnet lifecycle completed successfully for order `1`:
+
+- Buyer: `0x585BF3aCe247892Ac5f70cE5c8c16bD2f5C89047`
+- Approval transaction: [`0x714c94255df962e756b8b0f67266cf0de3f576d1e048963a1ba131051d09a9b9`](https://testnet.arcscan.app/tx/0x714c94255df962e756b8b0f67266cf0de3f576d1e048963a1ba131051d09a9b9)
+- Purchase transaction: [`0x573690792e4b2245047e0105d184e61d792462b177031cb97076172af39200f7`](https://testnet.arcscan.app/tx/0x573690792e4b2245047e0105d184e61d792462b177031cb97076172af39200f7)
+- Cancel transaction: [`0x35e97f6888d76b65fcc17b752825b8b30cac88f55a447bf232570a7f89b2de9`](https://testnet.arcscan.app/tx/0x35e97f6888d76b65fcc17b752825b8b30cac88f55a447bf232570a7f89b2de9)
+- Confirmed state transition: `PAID → CANCELLED`
+- Buyer USDC: `50000000` before, `994065` after purchase, `49992537` after cancel
+- Escrow USDC: `49000000` after purchase, `0` after cancel
+- GitHub Actions evidence: [run 34758209101](https://github.com/ShivamSoni20/Reclaim/actions/runs/34758209101)
+
+The final buyer balance is lower than the initial balance because Arc charges gas in USDC. The escrow returned the exact `49000000` purchase amount.
+
+## Links pending ENS evidence
+
 - Receipt parent and sample receipt: pending controlled ENSv2 parent
 - Repository: https://github.com/ShivamSoni20/Reclaim
 - Live app: pending deployment credentials
