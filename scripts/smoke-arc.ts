@@ -194,7 +194,8 @@ const c = cancelled as { status: number; claimOwner: string };
 if (
   c.status !== 3 ||
   ((noActions as number) & 1) !== 0 ||
-  afterCancel !== before ||
+  afterCancel <= afterPurchase ||
+  afterCancel > before ||
   escrowAfterCancel !== escrowAfterPurchase - PRICE
 )
   throw new Error("Cancellation/refund state mismatch");

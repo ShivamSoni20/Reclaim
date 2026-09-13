@@ -1,0 +1,91 @@
+name: Test Reclaim Arc Lifecycle
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: reclaim-arc-lifecycle
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: arc-testnet
+    env:
+      ARC_RPC_URL: ${{ secrets.ARC_RPC_URL }}
+      BUYER_PRIVATE_KEY: ${{ secrets.BUYER_PRIVATE_KEY }}
+      ARC_ESCROW_ADDRESS: "0x65cf0a527a6ac533ae4473d361ae182494da1537"
+      EXPECTED_BUYER: "0x585BF3aCe247892Ac5f70cE5c8c16bD2f5C89047"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate secrets and buyer identity
+        shell: bash
+        run: |
+          if [[ -z "$ARC_RPC_URL" ]]; then echo "Required environment secret ARC_RPC_URL is not configured." >&2; exit 1; fi
+          if [[ -z "$BUYER_PRIVATE_KEY" ]]; then echo "Required environment secret BUYER_PRIVATE_KEY is not configured." >&2; exit 1; fi
+          buyer="$(node --input-type=module -e 'import { privateKeyToAccount } from "viem/accounts"; console.log(privateKeyToAccount(process.env.BUYER_PRIVATE_KEY).address)')"
+          if [[ "${buyer,,}" != "${EXPECTED_BUYER,,}" ]]; then echo "Configured secret derives an unexpected buyer. STOP: no transaction sent." >&2; exit 1; fi
+          echo "Buyer identity verified: $buyer"
+      - name: Verify application
+        run: |
+          npm run lint
+          npm run build
+      - name: Run Arc lifecycle
+        shell: bash
+        run: |
+          set +e
+          npm run smoke:arc | tee lifecycle-output.log
+          lifecycle_status=${PIPESTATUS[0]}
+          set -e
+          result="$(grep '^{' lifecycle-output.log | tail -n 1)"
+          if [[ -z "$result" ]]; then echo "Smoke test produced no structured result." >&2; exit "$lifecycle_status"; fi
+          echo "$result" > lifecycle-result.json
+          status="$(jq -r '.status' lifecycle-result.json)"
+          {
+            echo "## Reclaim Arc lifecycle"
+            echo
+            echo "- Status: $status"
+            echo "- Buyer: $(jq -r '.buyer' lifecycle-result.json)"
+            echo "- Escrow: $ARC_ESCROW_ADDRESS"
+            echo "- Product: 49 USDC"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" == "LIFECYCLE TEST: BLOCKED ON BUYER FUNDING" ]]; then
+            {
+              echo "- USDC balance: $(jq -r '.currentUsdcBalance' lifecycle-result.json)"
+              echo "- Gas balance: $(jq -r '.gasBalance' lifecycle-result.json)"
+              echo "- Required: 49 USDC plus gas"
+              echo "- Transaction broadcast: NO"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 2
+          fi
+          if [[ "$status" != "LIFECYCLE TEST: PASS" ]]; then echo "Unexpected lifecycle result." >&2; exit 1; fi
+          approval="$(jq -r '.approvalTransaction // "not required"' lifecycle-result.json)"
+          purchase="$(jq -r '.purchaseTransaction' lifecycle-result.json)"
+          cancel="$(jq -r '.cancelTransaction' lifecycle-result.json)"
+          {
+            echo "- Approval transaction: $approval"
+            echo "- Purchase transaction: [$purchase](https://testnet.arcscan.app/tx/$purchase)"
+            echo "- Order ID: $(jq -r '.orderId' lifecycle-result.json)"
+            echo "- Cancel transaction: [$cancel](https://testnet.arcscan.app/tx/$cancel)"
+            echo "- Status after purchase: $(jq -r '.statusAfterPurchase' lifecycle-result.json)"
+            echo "- Status after cancel: $(jq -r '.statusAfterCancel' lifecycle-result.json)"
+            echo "- Buyer USDC before: $(jq -r '.buyerBalanceBefore' lifecycle-result.json)"
+            echo "- Buyer USDC after purchase: $(jq -r '.buyerBalanceAfterPurchase' lifecycle-result.json)"
+            echo "- Buyer USDC after cancel: $(jq -r '.buyerBalanceAfterCancel' lifecycle-result.json)"
+            echo "- Escrow balance after purchase: $(jq -r '.escrowBalanceAfterPurchase' lifecycle-result.json)"
+            echo "- Escrow balance after cancel: $(jq -r '.escrowBalanceAfterCancel' lifecycle-result.json)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$lifecycle_status"
+      - name: Upload lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arc-lifecycle-evidence
+          path: |
+            lifecycle-output.log
+            lifecycle-result.json
+          if-no-files-found: warn
