@@ -93,7 +93,8 @@ function Dashboard() {
       filter === "All" ||
       (filter === "Active" && r.state === "PAID") ||
       (filter === "Refundable" && r.state === "PAID") ||
-      (filter === "Transferred" && r.claimOwner !== WALLET) ||
+      (filter === "Transferred" &&
+        r.claimOwner.toLowerCase() !== (wallet.address ?? WALLET).toLowerCase()) ||
       (filter === "Completed" && (r.state === "FINALIZED" || r.state === "CANCELLED"));
     return matchesQuery && matchesFilter;
   });

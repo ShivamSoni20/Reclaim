@@ -142,7 +142,7 @@ export async function writeOrderAction(
   return hash;
 }
 
-export async function readOrderOnArc(orderId: number, receiptContract?: Address) {
+export async function readOrderOnArc(orderId: number, receiptContract?: Address, actor?: Address) {
   const configured = requireEscrow();
   const address = receiptContract ? getAddress(receiptContract) : configured;
   if (address !== configured)
@@ -162,11 +162,20 @@ export async function readOrderOnArc(orderId: number, receiptContract?: Address)
     "FINALIZED",
     "DISPUTED",
   ] as const;
+  const actionBitmap = actor
+    ? await publicClient.readContract({
+        address: configured,
+        abi: escrowAbi,
+        functionName: "getAvailableActions",
+        args: [BigInt(orderId), actor],
+      })
+    : undefined;
   const state = states[order.status] ?? "NONE";
   if (state === "NONE" || state === "DISPUTED")
     throw new Error("Order does not exist or is unsupported.");
   return {
     buyer: order.buyer,
+    ...(actionBitmap === undefined ? {} : { actionBitmap: Number(actionBitmap) }),
     merchant: order.merchant,
     claimOwner: order.claimOwner,
     amount: Number(formatUnits(order.amount, 6)),
@@ -206,7 +215,7 @@ export async function discoverOrdersForAccount(account: Address) {
     ids.map(async (orderId) => ({
       orderId: Number(orderId),
       txHash: created.find((log) => log.args.orderId === orderId)?.transactionHash ?? "",
-      order: await readOrderOnArc(Number(orderId)),
+      order: await readOrderOnArc(Number(orderId), undefined, account),
     })),
   );
   return orders.filter(

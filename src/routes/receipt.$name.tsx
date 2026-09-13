@@ -64,7 +64,11 @@ function ReceiptPage() {
     if (!LIVE_ENABLED) return;
     void resolveReceiptName(name)
       .then(async (resolved) => {
-        const order = await readOrderOnArc(resolved.orderId, resolved.contract);
+        const order = await readOrderOnArc(
+          resolved.orderId,
+          resolved.contract,
+          wallet.address ?? undefined,
+        );
         const synced = recordsMatchArc(resolved.records, order);
         applyArcOrder(resolved.name, {
           ...order,
@@ -82,7 +86,7 @@ function ReceiptPage() {
           description: error instanceof Error ? error.message : "Arc RPC request failed.",
         }),
       );
-  }, [name]);
+  }, [name, wallet.address]);
 
   async function execute(action: "cancel" | "requestRefund" | "transferClaim", recipient?: string) {
     if (!receipt) return;
@@ -100,7 +104,7 @@ function ReceiptPage() {
           receipt.order,
           resolvedRecipient,
         );
-        const canonical = await readOrderOnArc(receipt.order);
+        const canonical = await readOrderOnArc(receipt.order, undefined, account);
         const expectedState =
           action === "cancel"
             ? "CANCELLED"
@@ -125,7 +129,14 @@ function ReceiptPage() {
         setStage("Arc confirmed. Synchronizing the ENSv2 receipt");
         try {
           await synchronizeEns(receipt.order, hash);
-          applyArcOrder(receipt.name, { ensSynced: true });
+          const resolvedAfterSync = await resolveReceiptName(receipt.name);
+          if (!recordsMatchArc(resolvedAfterSync.records, canonical))
+            throw new Error("ENS transaction confirmed, but records remain stale.");
+          applyArcOrder(receipt.name, {
+            ensResolved: true,
+            ensSynced: true,
+            ensResolver: resolvedAfterSync.resolver,
+          });
           setSyncPending(false);
         } catch (syncError) {
           applyArcOrder(receipt.name, { ensSynced: false });
@@ -330,7 +341,7 @@ function ReceiptPage() {
             />
           </div>
 
-          <ReceiptPermissions />
+          <ReceiptPermissions receipt={receipt} />
           {syncPending && LIVE_ENABLED && (
             <section className="rounded-[18px] border border-warning/30 bg-warning/5 p-6">
               <h2 className="text-sm font-semibold">Arc is confirmed; ENS is pending</h2>
@@ -342,8 +353,20 @@ function ReceiptPage() {
                 className="mt-4 rounded-full"
                 onClick={() => {
                   void synchronizeEns(receipt.order)
-                    .then(() => {
-                      applyArcOrder(receipt.name, { ensSynced: true });
+                    .then(async () => {
+                      const [canonical, resolved] = await Promise.all([
+                        readOrderOnArc(receipt.order, undefined, wallet.address ?? undefined),
+                        resolveReceiptName(receipt.name),
+                      ]);
+                      if (!recordsMatchArc(resolved.records, canonical))
+                        throw new Error("ENS transaction confirmed, but records remain stale.");
+                      applyArcOrder(receipt.name, {
+                        ...canonical,
+                        arcVerified: true,
+                        ensResolved: true,
+                        ensSynced: true,
+                        ensResolver: resolved.resolver,
+                      });
                       setSyncPending(false);
                       toast.success("ENS receipt synchronized");
                     })

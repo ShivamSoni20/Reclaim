@@ -12,7 +12,9 @@ export interface Receipt {
   /** USDC amount */
   amount: number;
   merchant: string;
+  buyer: string;
   claimOwner: string;
+  actionBitmap?: number;
   state: ReceiptState;
   purchasedAt: number;
   /** epoch ms after which immediate cancellation is no longer possible */
@@ -33,7 +35,6 @@ export interface Receipt {
 
 export const WALLET = "0x72A4f1B0c3De5a91C4b77A0913f8e2Cd449891B2";
 export const SETTLEMENT_CONTRACT = "0x85d3F0a17bC4d2E6098aa70eD41b9c2F3b17Ae91";
-export const RESOLVER = "0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63";
 
 export function shortAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -51,6 +52,7 @@ function seed(): Receipt[] {
       description: "Limited Edition Hardware Wallet Case",
       amount: 49,
       merchant: "shop.alice.eth",
+      buyer: WALLET,
       claimOwner: WALLET,
       state: "PAID",
       purchasedAt: now - 3 * 60_000,
@@ -68,6 +70,7 @@ function seed(): Receipt[] {
       description: "Limited Edition Hardware Wallet Case",
       amount: 49,
       merchant: "shop.alice.eth",
+      buyer: WALLET,
       claimOwner: WALLET,
       state: "CANCELLED",
       purchasedAt: now - 4 * 24 * 60 * 60_000,
@@ -87,6 +90,7 @@ function seed(): Receipt[] {
       description: "Travel accessory bundle",
       amount: 49,
       merchant: "shop.alice.eth",
+      buyer: WALLET,
       claimOwner: WALLET,
       state: "FINALIZED",
       purchasedAt: now - 11 * 24 * 60 * 60_000,
@@ -149,6 +153,7 @@ export function applyArcOrder(name: string, patch: Partial<Receipt>) {
     description: "Limited Edition Hardware Wallet Case",
     amount: 0,
     merchant: "Unknown",
+    buyer: WALLET,
     claimOwner: WALLET,
     state: "PAID",
     purchasedAt: Date.now(),
@@ -209,7 +214,8 @@ export function addLivePurchase(input: {
   transferable: boolean;
   txHash: string;
 }): Receipt {
-  const parent = import.meta.env.VITE_RECEIPT_PARENT || "shop.receipts.eth";
+  const parent = import.meta.env.VITE_RECEIPT_PARENT;
+  if (!parent) throw new Error("VITE_RECEIPT_PARENT is required in live mode.");
   const receipt: Receipt = {
     name: `order-${input.orderId}.${parent}`,
     order: Number(input.orderId),
@@ -217,6 +223,7 @@ export function addLivePurchase(input: {
     description: "Limited Edition Hardware Wallet Case",
     amount: input.amount,
     merchant: input.merchant,
+    buyer: input.buyer,
     claimOwner: input.buyer,
     state: "PAID",
     purchasedAt: Date.now(),
@@ -240,15 +247,19 @@ export function randomHash() {
 }
 
 export function canCancel(r: Receipt, now = Date.now()) {
-  return r.state === "PAID" && now < r.refundDeadline;
+  return r.actionBitmap === undefined
+    ? r.state === "PAID" && now < r.cancelDeadline
+    : (r.actionBitmap & 1) !== 0;
 }
 
 export function canRefund(r: Receipt) {
-  return r.state === "PAID";
+  return r.actionBitmap === undefined ? r.state === "PAID" : (r.actionBitmap & 4) !== 0;
 }
 
 export function canTransfer(r: Receipt) {
-  return r.state === "PAID" && r.transferable;
+  return r.actionBitmap === undefined
+    ? r.state === "PAID" && r.transferable
+    : (r.actionBitmap & 2) !== 0;
 }
 
 export function formatUsdc(amount: number, decimals = 2) {

@@ -31,7 +31,7 @@ export function CancelDialog({
           <DialogTitle className="text-xl tracking-tight">Cancel this purchase?</DialogTitle>
           <DialogDescription>
             Your purchase will be cancelled and {receipt.amount} USDC will be returned to{" "}
-            <span className="font-mono text-foreground">{shortAddress(receipt.claimOwner)}</span>.
+            <span className="font-mono text-foreground">{shortAddress(receipt.buyer)}</span>.
           </DialogDescription>
         </DialogHeader>
 

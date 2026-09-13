@@ -2,7 +2,7 @@ import { ArrowLeftRight, RotateCcw, X } from "lucide-react";
 import { motion } from "motion/react";
 import { Countdown } from "./primitives";
 import { Button } from "@/components/ui/button";
-import { canCancel, canRefund, canTransfer, type Receipt } from "@/lib/receipts";
+import { canCancel, canRefund, canTransfer, shortAddress, type Receipt } from "@/lib/receipts";
 import { cn } from "@/lib/utils";
 
 function ActionCard({
@@ -96,7 +96,7 @@ export function ReceiptActions({
             icon={X}
             tone="danger"
             title="Cancel Order"
-            description={`Cancel before settlement and receive your full ${receipt.amount} USDC.`}
+            description={`Cancel before settlement. ${receipt.amount} USDC returns to the original buyer ${shortAddress(receipt.buyer)}.`}
             secondary={
               <>
                 Available for <Countdown deadline={receipt.cancelDeadline} format="long" />.

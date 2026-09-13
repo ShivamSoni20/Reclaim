@@ -15,6 +15,7 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+.env
 
 # Wrangler / Cloudflare
 .wrangler/
@@ -30,3 +31,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Foundry
+cache/
+contracts/out/
+broadcast/
+
+# Local agent tooling
+.agents/
+skills-lock.json

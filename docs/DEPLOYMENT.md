@@ -81,3 +81,14 @@ npm run build
 ```
 
 Then execute purchase, cancel, claim-transfer, and refund-request flows with funded test wallets. Save every real transaction hash and the receipt name in `SUBMISSION.md`. If Arc succeeds while ENS is unavailable, the UI reports partial success and exposes **Retry ENS Sync**; never repeat the Arc financial action.
+
+## Operational commands
+
+```bash
+npm run preflight
+npm run ens:setup
+npm run ens:sync -- --order 7
+npm run ens:verify -- order-7.your-controlled-name.eth
+```
+
+`ens:sync` and the HTTP service call the same synchronization core. `ens:verify` independently resolves the receipt, reads Arc, and exits non-zero when the mirror differs. The ABI fragments are intentionally limited to the current ENSv2 Permissioned Registry registration, Permissioned Resolver text/multicall, and exact-key `authorizeTextRoles` APIs documented by ENS. Deployment addresses are never embedded: obtain the current Sepolia values from [ENSv2 deployments](https://docs.ens.domains/ensv2/) and provide them through server environment variables.

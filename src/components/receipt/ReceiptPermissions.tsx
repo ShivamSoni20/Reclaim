@@ -1,20 +1,8 @@
 import { Check, ChevronDown, ShieldCheck, X } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { canCancel, canRefund, canTransfer, type Receipt } from "@/lib/receipts";
 import { cn } from "@/lib/utils";
-
-const customer = [
-  { label: "View receipt", allowed: true },
-  { label: "Transfer claim", allowed: true },
-  { label: "Request refund", allowed: true },
-  { label: "Change amount", allowed: false },
-  { label: "Change settlement state", allowed: false },
-];
-
-const merchant = [
-  { label: "Update lifecycle", allowed: true },
-  { label: "Finalize settlement", allowed: true },
-];
 
 function Row({ label, allowed }: { label: string; allowed: boolean }) {
   return (
@@ -28,10 +16,20 @@ function Row({ label, allowed }: { label: string; allowed: boolean }) {
     </li>
   );
 }
-
-export function ReceiptPermissions() {
+export function ReceiptPermissions({ receipt }: { receipt: Receipt }) {
   const [open, setOpen] = useState(false);
-
+  const customer = [
+    { label: "Cancel order", allowed: canCancel(receipt) },
+    { label: "Transfer claim", allowed: canTransfer(receipt) },
+    { label: "Request refund", allowed: canRefund(receipt) },
+    { label: "Edit customer note", allowed: receipt.ensSynced === true },
+    { label: "Change amount", allowed: false },
+    { label: "Change settlement state", allowed: false },
+  ];
+  const synchronizer = [
+    { label: "Mirror verified lifecycle", allowed: receipt.ensSynced === true },
+    { label: "Change Arc financial state", allowed: false },
+  ];
   return (
     <section className="overflow-hidden rounded-[18px] border border-border bg-card shadow-soft">
       <button
@@ -45,7 +43,7 @@ export function ReceiptPermissions() {
           <span>
             <span className="block text-sm font-semibold">Receipt Permissions</span>
             <span className="block text-sm text-muted-foreground">
-              Who can do what with this receipt
+              Arc rights and scoped ENSv2 delegation
             </span>
           </span>
         </span>
@@ -54,7 +52,6 @@ export function ReceiptPermissions() {
           aria-hidden
         />
       </button>
-
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
@@ -66,27 +63,28 @@ export function ReceiptPermissions() {
             <div className="grid gap-8 border-t border-border px-6 py-6 sm:grid-cols-2">
               <div>
                 <p className="text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-                  Customer
+                  Claim owner
                 </p>
                 <ul className="mt-4 space-y-3">
-                  {customer.map((p) => (
-                    <Row key={p.label} {...p} />
+                  {customer.map((permission) => (
+                    <Row key={permission.label} {...permission} />
                   ))}
                 </ul>
               </div>
               <div>
                 <p className="text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-                  Merchant
+                  ENS synchronizer
                 </p>
                 <ul className="mt-4 space-y-3">
-                  {merchant.map((p) => (
-                    <Row key={p.label} {...p} />
+                  {synchronizer.map((permission) => (
+                    <Row key={permission.label} {...permission} />
                   ))}
                 </ul>
               </div>
             </div>
             <p className="border-t border-border bg-secondary/50 px-6 py-3.5 text-xs text-muted-foreground">
-              Powered by ENSv2 Enhanced Access Control
+              Financial actions are enforced on Arc. ENSv2 EAC grants the current claim owner only
+              the receipt.customerNote text key.
             </p>
           </motion.div>
         )}

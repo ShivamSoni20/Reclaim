@@ -32,6 +32,10 @@ npm ci
 npm run dev
 npm run lint
 npm run build
+npm run preflight
+npm run ens:setup
+npm run ens:sync -- --order 7
+npm run ens:verify -- order-7.your-parent.eth
 ```
 
 For contracts:
