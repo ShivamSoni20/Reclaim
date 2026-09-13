@@ -25,7 +25,7 @@ All values below are server-only. `ENS_SYNC_SIGNER_PRIVATE_KEY` must never use a
 
 ```env
 ARC_RPC_URL=https://rpc.testnet.arc.network
-ARC_ESCROW_ADDRESS=0xYourDeployedEscrow
+ARC_ESCROW_ADDRESS=0x65cf0a527a6ac533ae4473d361ae182494da1537
 ENS_SEPOLIA_RPC_URL=https://your-sepolia-rpc
 ENS_SYNC_SIGNER_PRIVATE_KEY=0xServerSignerKey
 ENS_RECEIPT_PARENT=shop.your-controlled-name.eth
@@ -54,8 +54,8 @@ Expose this service over HTTPS and either reverse-proxy `/api/receipt-sync` or s
 
 ```env
 VITE_ARC_RPC_URL=https://rpc.testnet.arc.network
-VITE_ESCROW_ADDRESS=0xYourDeployedEscrow
-VITE_ESCROW_DEPLOY_BLOCK=123456
+VITE_ESCROW_ADDRESS=0x65cf0a527a6ac533ae4473d361ae182494da1537
+VITE_ESCROW_DEPLOY_BLOCK=61892392
 VITE_RECEIPT_PARENT=shop.your-controlled-name.eth
 VITE_ENS_SEPOLIA_RPC_URL=https://your-sepolia-rpc
 VITE_ENS_SYNC_URL=https://your-server.example/api/receipt-sync
@@ -92,3 +92,15 @@ npm run ens:verify -- order-7.your-controlled-name.eth
 ```
 
 `ens:sync` and the HTTP service call the same synchronization core. `ens:verify` independently resolves the receipt, reads Arc, and exits non-zero when the mirror differs. The ABI fragments are intentionally limited to the current ENSv2 Permissioned Registry registration, Permissioned Resolver text/multicall, and exact-key `authorizeTextRoles` APIs documented by ENS. Deployment addresses are never embedded: obtain the current Sepolia values from [ENSv2 deployments](https://docs.ens.domains/ensv2/) and provide them through server environment variables.
+
+## Arc Testnet deployment
+
+- Network: Arc Testnet (`5042002`)
+- Escrow: [`0x65cf0a527a6ac533ae4473d361ae182494da1537`](https://testnet.arcscan.app/address/0x65cf0a527a6ac533ae4473d361ae182494da1537)
+- Deployment transaction: [`0x6db3a02e7d986d20a337742632527b4100a8f2b92c1b548fc9fefd815111a322`](https://testnet.arcscan.app/tx/0x6db3a02e7d986d20a337742632527b4100a8f2b92c1b548fc9fefd815111a322)
+- Deployment block: `61892392`
+- Merchant: `0x620f495e239298490bE0117B4d0e836F71536B2b`
+- Arc USDC: `0x3600000000000000000000000000000000000000`
+- Product 1: `49 USDC` (`49000000` base units), transferable
+- Cancel window: `900 seconds`
+- Refund window: `900 seconds`

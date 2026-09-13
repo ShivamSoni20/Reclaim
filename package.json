@@ -14,7 +14,8 @@
     "ens:setup": "node --env-file-if-exists=.env --experimental-strip-types scripts/ens/setup-parent.ts",
     "ens:sync": "node --env-file-if-exists=.env --experimental-strip-types scripts/ens/sync-order.ts",
     "ens:verify": "node --env-file-if-exists=.env --experimental-strip-types scripts/ens/verify-receipt.ts",
-    "preflight": "node --env-file-if-exists=.env --experimental-strip-types scripts/preflight.ts"
+    "preflight": "node --env-file-if-exists=.env --experimental-strip-types scripts/preflight.ts",
+    "smoke:arc": "node --env-file-if-exists=.env.smoke.local --experimental-strip-types scripts/smoke-arc.ts"
   },
   "overrides": {
     "rolldown": "1.2.1"
