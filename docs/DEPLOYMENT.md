@@ -19,55 +19,65 @@ On ENSv2 Sepolia, the team must control the name in `ENS_RECEIPT_PARENT` and its
 
 The current claim owner receives only exact-key permission for `receipt.customerNote`. The server retains authoritative record writes. On claim transfer the old exact-key grant is revoked and the new owner receives it. This does not authorize either customer to edit amount, status, deadlines, or other financial metadata.
 
-## 3. Configure the ENS sync service
+## 3. Deploy the app and ENS sync endpoint on Vercel
 
-All values below are server-only. `ENS_SYNC_SIGNER_PRIVATE_KEY` must never use a `VITE_` prefix.
+Production uses one provider and one origin:
+
+```text
+GitHub
+   ↓
+Vercel
+   ├── TanStack Start frontend
+   └── POST /api/receipt-sync server function
+```
+
+The server route calls the shared `syncOrder()` implementation directly. It does not start a listener, keep process-local rate-limit state, trust browser-supplied financial fields, or require a separate backend. The standalone `npm run ens-sync` command remains available only for local debugging.
+
+Import `ShivamSoni20/Reclaim` in Vercel, then open **Project → Settings → Environment Variables**. Set `NITRO_PRESET=vercel`; the existing Lovable wrapper already configures TanStack Start and Nitro, so do not add duplicate Vite plugins.
+
+### Browser-safe variables
 
 ```env
-ARC_RPC_URL=https://rpc.testnet.arc.network
-ARC_ESCROW_ADDRESS=0x65cf0a527a6ac533ae4473d361ae182494da1537
-ENS_SEPOLIA_RPC_URL=https://your-sepolia-rpc
-ENS_SYNC_SIGNER_PRIVATE_KEY=0xServerSignerKey
-ENS_RECEIPT_PARENT=shop.your-controlled-name.eth
-ENS_PARENT_REGISTRY=0xCurrentPermissionedRegistry
-ENS_PERMISSIONED_RESOLVER=0xCurrentPermissionedResolver
-ENS_SYNC_PORT=8788
-```
-
-Run:
-
-```bash
-npm run ens-sync
-```
-
-The service accepts `POST /api/receipt-sync` with only:
-
-```json
-{ "orderId": 1, "arcTxHash": "0xoptionalConfirmedArcTransaction" }
-```
-
-It verifies the optional transaction targets the configured escrow, reads canonical order state directly from Arc, creates/resolves the deterministic child, derives every record, migrates the exact-key EAC grant, waits for the ENS transaction, and returns the real ENS transaction hash. It rate-limits callers and rejects bodies above 2 KB. Repeating a sync is safe.
-
-Expose this service over HTTPS and either reverse-proxy `/api/receipt-sync` or set an absolute `VITE_ENS_SYNC_URL`.
-
-## 4. Configure and build the app
-
-```env
-VITE_ARC_RPC_URL=https://rpc.testnet.arc.network
+VITE_ARC_RPC_URL=https://public-arc-testnet-rpc
 VITE_ESCROW_ADDRESS=0x65cf0a527a6ac533ae4473d361ae182494da1537
 VITE_ESCROW_DEPLOY_BLOCK=61892392
-VITE_RECEIPT_PARENT=shop.your-controlled-name.eth
-VITE_ENS_SEPOLIA_RPC_URL=https://your-sepolia-rpc
-VITE_ENS_SYNC_URL=https://your-server.example/api/receipt-sync
+VITE_RECEIPT_PARENT=reclaimprotocol.eth
+VITE_ENS_SEPOLIA_RPC_URL=https://public-sepolia-rpc
+VITE_ENS_SYNC_URL=/api/receipt-sync
 ```
+
+### Server-only variables
+
+```env
+ARC_RPC_URL=https://private-arc-testnet-rpc
+ARC_ESCROW_ADDRESS=0x65cf0a527a6ac533ae4473d361ae182494da1537
+ENS_SEPOLIA_RPC_URL=https://private-sepolia-rpc
+ENS_SYNC_SIGNER_PRIVATE_KEY=0xServerSignerKey
+ENS_RECEIPT_PARENT=reclaimprotocol.eth
+ENS_PARENT_REGISTRY=0x3141dccd1288882ca27ccAE0aB4E3baDD9dEa7B5
+ENS_PERMISSIONED_RESOLVER=0x75A7fb21f7a7bB84492149234e4bAb7c119f77C7
+NITRO_PRESET=vercel
+```
+
+Never put private RPC URLs or private keys in `VITE_*` variables. Initially enable `ENS_SYNC_SIGNER_PRIVATE_KEY` only for the Vercel **Production** environment, not arbitrary Preview deployments.
+
+The endpoint accepts only a positive `orderId` and an optional 32-byte `arcTxHash`:
+
+```json
+{ "orderId": "1", "arcTxHash": "0xoptionalConfirmedArcTransaction" }
+```
+
+It verifies the optional transaction, reads the configured Arc escrow as canonical state, creates or updates the deterministic ENS receipt through the shared synchronization core, and returns the real synchronization result. Requests larger than 2 KB, malformed JSON, invalid IDs, and invalid hashes are rejected. Repeating a sync is idempotent when Arc state and ENS records already match.
+
+## 4. Build for Vercel
 
 ```bash
 npm ci
 npm run lint
-npm run build
+NITRO_PRESET=vercel npm run build
 ```
 
-The dashboard discovers orders from `OrderCreated` and `ClaimTransferred` logs starting at `VITE_ESCROW_DEPLOY_BLOCK`. A receipt deep link resolves its contract and order pointer through ENSv2, then loads Arc canonical state.
+Vercel natively supports the TanStack Start + Nitro output. `vercel.json` declares the `tanstack-start` framework; no custom output directory, rewrite, or second server is required. The dashboard discovers orders from `OrderCreated` and `ClaimTransferred` logs starting at `VITE_ESCROW_DEPLOY_BLOCK`. Receipt deep links resolve ENS pointers and then read canonical Arc state.
 
 ## 5. Verify before recording
 

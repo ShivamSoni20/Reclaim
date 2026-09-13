@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DemoRouteImport } from './routes/demo'
+import { Route as ApiReceiptSyncRouteImport } from './routes/api.receipt-sync'
 import { Route as ReceiptNameRouteImport } from './routes/receipt.$name'
 
 const IndexRoute = IndexRouteImport.update({
@@ -29,6 +30,11 @@ const DemoRoute = DemoRouteImport.update({
   path: '/demo',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiReceiptSyncRoute = ApiReceiptSyncRouteImport.update({
+  id: '/api/receipt-sync',
+  path: '/api/receipt-sync',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReceiptNameRoute = ReceiptNameRouteImport.update({
   id: '/receipt/$name',
   path: '/receipt/$name',
@@ -39,12 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/demo': typeof DemoRoute
+  '/api/receipt-sync': typeof ApiReceiptSyncRoute
   '/receipt/$name': typeof ReceiptNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/demo': typeof DemoRoute
+  '/api/receipt-sync': typeof ApiReceiptSyncRoute
   '/receipt/$name': typeof ReceiptNameRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,29 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/demo': typeof DemoRoute
+  '/api/receipt-sync': typeof ApiReceiptSyncRoute
   '/receipt/$name': typeof ReceiptNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dashboard' | '/demo' | '/receipt/$name'
+  fullPaths:
+    '/' | '/dashboard' | '/demo' | '/api/receipt-sync' | '/receipt/$name'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/demo' | '/receipt/$name'
-  id: '__root__' | '/' | '/dashboard' | '/demo' | '/receipt/$name'
+  to: '/' | '/dashboard' | '/demo' | '/api/receipt-sync' | '/receipt/$name'
+  id:
+    | '__root__'
+    | '/'
+    | '/dashboard'
+    | '/demo'
+    | '/api/receipt-sync'
+    | '/receipt/$name'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
   DemoRoute: typeof DemoRoute
+  ApiReceiptSyncRoute: typeof ApiReceiptSyncRoute
   ReceiptNameRoute: typeof ReceiptNameRoute
 }
 
@@ -92,6 +109,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/receipt-sync': {
+      id: '/api/receipt-sync'
+      path: '/api/receipt-sync'
+      fullPath: '/api/receipt-sync'
+      preLoaderRoute: typeof ApiReceiptSyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/receipt/$name': {
       id: '/receipt/$name'
       path: '/receipt/$name'
@@ -106,6 +130,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
   DemoRoute: DemoRoute,
+  ApiReceiptSyncRoute: ApiReceiptSyncRoute,
   ReceiptNameRoute: ReceiptNameRoute,
 }
 export const routeTree = rootRouteImport

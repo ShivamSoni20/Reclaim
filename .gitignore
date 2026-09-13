@@ -17,6 +17,9 @@ dist-ssr
 *.local
 .env
 
+# Deployment output
+.vercel/
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
